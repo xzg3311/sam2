@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
+import time
 from typing import Any, Generator
 
 from app_conf import (
@@ -23,6 +24,7 @@ from inference.data_types import PropagateDataResponse, PropagateInVideoRequest
 from inference.multipart import MultipartResponseBuilder
 from inference.predictor import InferenceAPI
 from strawberry.flask.views import GraphQLView
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +73,22 @@ def send_uploaded_video(path: str):
         )
     except:
         raise ValueError("resource not found")
+    
+@app.route(f"/mask", methods=["POST"])
+def predict_image() -> Response:
+    data = request.json
+    start_time = time.time()
+    res = inference_api.predict_image(data["url"],data["points"],data["labels"],None,True)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"mask生成时间: {elapsed_time:.6f} 秒")
+    return Response(
+        res,
+        mimetype="image/jpeg",
+        headers={
+            "Content-Disposition": "attachment; filename=mask.jpg" 
+        }
+    )
 
 
 # TOOD: Protect route with ToS permission check

@@ -34,8 +34,11 @@ from inference.data_types import (
     StartSessionResponse,
 )
 from pycocotools.mask import decode as decode_masks, encode as encode_masks
-from sam2.build_sam import build_sam2_video_predictor
-
+from sam2.build_sam import build_sam2_video_predictor, build_sam2
+from sam2.sam2_image_predictor import SAM2ImagePredictor
+from PIL import Image
+import requests
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +92,34 @@ class InferenceAPI:
         self.predictor = build_sam2_video_predictor(
             model_cfg, checkpoint, device=device
         )
+        sam2_model = build_sam2(model_cfg, checkpoint, device=device)
+        self.img_predictor = SAM2ImagePredictor(sam2_model)
+        self.current_img = None
         self.inference_lock = Lock()
+
+    def predict_image(self,url:str,input_points:List[List[int]],input_labels:List[int],input_box:List[List[int]],multimask_output:bool):
+        print(url,input_points,input_labels,input_box,multimask_output)
+        with self.inference_lock:
+            if self.current_img != url:
+                response = requests.get(url)
+                img = Image.open(BytesIO(response.content))
+                self.img_predictor.set_image(img)
+                self.current_img = url            
+            masks, scores, logits = self.img_predictor.predict(
+                point_coords=np.array(input_points),
+                point_labels=np.array(input_labels),
+                box = np.array(input_box) if isinstance(input_box,List) else None,
+                multimask_output=multimask_output)
+            sorted_ind = np.argsort(scores)[::-1]
+            masks = masks[sorted_ind]
+            scores = scores[sorted_ind]
+            logits = logits[sorted_ind]
+            mask = Image.fromarray(masks[0].astype(np.uint8) * 255)
+            byte_io = BytesIO()
+            mask.save(byte_io, format="JPEG")
+            byte_io.seek(0)
+            return byte_io.getvalue()
+
 
     def autocast_context(self):
         if self.device.type == "cuda":
