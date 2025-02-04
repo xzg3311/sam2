@@ -39,6 +39,7 @@ from sam2.sam2_image_predictor import SAM2ImagePredictor
 from PIL import Image
 import requests
 from io import BytesIO
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -98,11 +99,17 @@ class InferenceAPI:
         self.inference_lock = Lock()
 
     def predict_image(self,url:str,input_points:List[List[int]],input_labels:List[int],input_box:List[List[int]],multimask_output:bool):
-        print(url,input_points,input_labels,input_box,multimask_output)
+        print(url[:50],input_points,input_labels,input_box,multimask_output)
         with self.inference_lock:
             if self.current_img != url:
-                response = requests.get(url)
-                img = Image.open(BytesIO(response.content))
+                if url.startswith("data:"):
+                    header, encoded = url.split(",", 1)
+                    img = Image.open(BytesIO(base64.b64decode(encoded))).convert('RGB')
+                    # with open("./test.png", 'wb') as file:
+                    #     file.write(base64.b64decode(encoded))
+                else:
+                    response = requests.get(url)
+                    img = Image.open(BytesIO(response.content))
                 self.img_predictor.set_image(img)
                 self.current_img = url            
             masks, scores, logits = self.img_predictor.predict(

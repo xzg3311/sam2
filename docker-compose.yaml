@@ -16,6 +16,8 @@ services:
       - 7263:5000
     volumes:
       - ./demo/data/:/data/:rw
+      - ./demo/backend/server/:/opt/sam2/server/:rw
+      - ./sam2/:/opt/sam2/server/sam2/:rw
     environment:
       - SERVER_ENVIRONMENT=DEV
       - GUNICORN_WORKERS=1

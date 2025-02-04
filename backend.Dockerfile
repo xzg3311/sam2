@@ -39,10 +39,10 @@ RUN pip install -e ".[interactive-demo]"
 RUN mkdir ${APP_ROOT}
 
 # Copy backend server files
-COPY demo/backend/server ${APP_ROOT}/server
+#COPY demo/backend/server ${APP_ROOT}/server
 
 # Copy SAM 2 inference files
-COPY sam2 ${APP_ROOT}/server/sam2
+#COPY sam2 ${APP_ROOT}/server/sam2
 
 # Download SAM 2.1 checkpoints
 ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_tiny.pt
