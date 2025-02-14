@@ -90,6 +90,22 @@ def predict_image() -> Response:
         }
     )
 
+@app.route(f"/masks", methods=["POST"])
+def generate_masks() -> Response:
+    data = request.json
+    start_time = time.time()
+    res = inference_api.generate_masks(data["url"])
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"masks生成时间: {elapsed_time:.6f} 秒")
+    return Response(
+        res,
+        mimetype="image/png",
+        headers={
+            "Content-Disposition": "attachment; filename=mask.png" 
+        }
+    )
+
 
 # TOOD: Protect route with ToS permission check
 @app.route("/propagate_in_video", methods=["POST"])

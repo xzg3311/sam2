@@ -36,10 +36,12 @@ from inference.data_types import (
 from pycocotools.mask import decode as decode_masks, encode as encode_masks
 from sam2.build_sam import build_sam2_video_predictor, build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 from PIL import Image
 import requests
 from io import BytesIO
 import base64
+import cv2
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +97,7 @@ class InferenceAPI:
         )
         sam2_model = build_sam2(model_cfg, checkpoint, device=device)
         self.img_predictor = SAM2ImagePredictor(sam2_model)
+        self.mask_generator = SAM2AutomaticMaskGenerator(sam2_model)
         self.current_img = None
         self.inference_lock = Lock()
 
@@ -109,7 +112,7 @@ class InferenceAPI:
                     #     file.write(base64.b64decode(encoded))
                 else:
                     response = requests.get(url)
-                    img = Image.open(BytesIO(response.content))
+                    img = Image.open(BytesIO(response.content)).convert('RGB')
                 self.img_predictor.set_image(img)
                 self.current_img = url            
             masks, scores, logits = self.img_predictor.predict(
@@ -127,6 +130,47 @@ class InferenceAPI:
             byte_io.seek(0)
             return byte_io.getvalue()
 
+    def generate_masks(self, url:str):
+        print(url[:50])
+        with self.inference_lock:
+            if url.startswith("data:"):
+                header, encoded = url.split(",", 1)
+                img = Image.open(BytesIO(base64.b64decode(encoded))).convert('RGB')
+                # with open("./test.png", 'wb') as file:
+                #     file.write(base64.b64decode(encoded))
+            else:
+                response = requests.get(url)
+                img = Image.open(BytesIO(response.content)).convert('RGB')
+
+            masks = self.mask_generator.generate(np.array(img))              
+            print(len(masks))
+
+            maskImgArr = self.combine_masks(masks)
+            mask = Image.fromarray((maskImgArr * 255).astype(np.uint8), 'RGBA')
+            byte_io = BytesIO()
+            mask.save(byte_io, format="PNG")
+            byte_io.seek(0)
+            return byte_io.getvalue()
+        
+    def combine_masks(self, masks, borders=True):
+        if len(masks) == 0:
+            return
+        np.random.seed(3)
+        sorted_masks = sorted(masks, key=(lambda x: x['area']), reverse=True)
+
+        img = np.ones((sorted_masks[0]['segmentation'].shape[0], sorted_masks[0]['segmentation'].shape[1], 4))
+        img[:, :, 3] = 0
+        for ann in sorted_masks:
+            m = ann['segmentation']
+            color_mask = np.concatenate([np.random.random(3), [0.5]])
+            img[m] = color_mask 
+            if borders:                
+                contours, _ = cv2.findContours(m.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE) 
+                # Try to smooth contours
+                contours = [cv2.approxPolyDP(contour, epsilon=0.01, closed=True) for contour in contours]
+                cv2.drawContours(img, contours, -1, (0, 0, 1, 0.4), thickness=1) 
+        print(img)
+        return img
 
     def autocast_context(self):
         if self.device.type == "cuda":
